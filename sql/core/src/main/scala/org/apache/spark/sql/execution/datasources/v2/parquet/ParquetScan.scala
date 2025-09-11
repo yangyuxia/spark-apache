@@ -23,14 +23,15 @@ import org.apache.hadoop.fs.Path
 import org.apache.parquet.hadoop.ParquetInputFormat
 
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.catalyst.expressions.Expression
+import org.apache.spark.sql.catalyst.expressions.{AttributeReference, Expression, InSet}
+import org.apache.spark.sql.connector.expressions.{FieldReference, NamedReference}
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
-import org.apache.spark.sql.connector.read.PartitionReaderFactory
+import org.apache.spark.sql.connector.read.{PartitionReaderFactory, SupportsRuntimeFiltering}
 import org.apache.spark.sql.execution.datasources.{AggregatePushDownUtils, PartitioningAwareFileIndex}
 import org.apache.spark.sql.execution.datasources.parquet.{ParquetOptions, ParquetReadSupport, ParquetWriteSupport}
 import org.apache.spark.sql.execution.datasources.v2.FileScan
 import org.apache.spark.sql.internal.SQLConf
-import org.apache.spark.sql.sources.Filter
+import org.apache.spark.sql.sources.{Filter, In}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.apache.spark.util.SerializableConfiguration
@@ -45,8 +46,14 @@ case class ParquetScan(
     pushedFilters: Array[Filter],
     options: CaseInsensitiveStringMap,
     pushedAggregate: Option[Aggregation] = None,
-    partitionFilters: Seq[Expression] = Seq.empty,
-    dataFilters: Seq[Expression] = Seq.empty) extends FileScan {
+    originPartitionFilters: Seq[Expression] = Seq.empty,
+    dataFilters: Seq[Expression] = Seq.empty) extends FileScan with SupportsRuntimeFiltering {
+  private var dppPartitionFilters: Seq[Expression] = Seq.empty;
+
+  override def partitionFilters: Seq[Expression] = {
+    originPartitionFilters ++ dppPartitionFilters
+  }
+
   override def isSplitable(path: Path): Boolean = {
     // If aggregate is pushed down, only the file footer will be read once,
     // so file should not be split across multiple tasks.
@@ -134,6 +141,22 @@ case class ParquetScan(
   override def getMetaData(): Map[String, String] = {
     super.getMetaData() ++ Map("PushedFilters" -> seqToString(pushedFilters)) ++
       Map("PushedAggregation" -> pushedAggregationsStr) ++
-      Map("PushedGroupBy" -> pushedGroupByStr)
+      Map("PushedGroupBy" -> pushedGroupByStr) ++
+      Map("dynamicpruningexpression"-> seqToString(dppPartitionFilters))
+  }
+
+  override def filterAttributes(): Array[NamedReference] = {
+    val scanFields = readSchema.fields.map(_.name).toSet
+    readPartitionSchema.fields.map(_.name)
+      .filter(ref => scanFields.contains(ref)).map(f => FieldReference(f))
+    }
+
+  override def filter(filters: Array[Filter]): Unit = {
+    filters.foreach {
+      case In(attrName, values) if readPartitionSchema.fieldNames.contains(attrName) =>
+        val dataType = readPartitionSchema.fields(readPartitionSchema.fieldIndex(attrName)).dataType
+        dppPartitionFilters = dppPartitionFilters :+ InSet(AttributeReference(attrName, dataType)(), values.toSet)
+      case _ => // skip
+    }
   }
 }
