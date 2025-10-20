@@ -29,7 +29,7 @@ import org.apache.spark.{DebugFilesystem, SparkConf, SparkException}
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.{InternalRow, TableIdentifier}
 import org.apache.spark.sql.catalyst.expressions.SpecificInternalRow
-import org.apache.spark.sql.execution.FileSourceScanExec
+import org.apache.spark.sql.execution.{ExplainMode, FileSourceScanExec}
 import org.apache.spark.sql.execution.datasources.{SchemaColumnConvertNotSupportedException, SQLHadoopMapReduceCommitProtocol}
 import org.apache.spark.sql.execution.datasources.parquet.TestingUDT.{NestedStruct, NestedStructUDT, SingleElement}
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
@@ -1014,6 +1014,72 @@ abstract class ParquetQuerySuite extends QueryTest with ParquetTest with SharedS
       checkAnswer(sql("select * from tbl"), expected)
     }
   }
+
+  test("dpp") {
+    // 4 rows, cells of column 1 of row 2 and row 4 are null
+    val fact = (0 to 99).map { i =>
+      (i, i + 1, (i + 2).toByte, (i + 3).toShort, (i * 20) % 100, (i + 1).toString)
+    }
+
+    val dim = (0 to 9).map { i =>
+      (i, i + 1, (i + 2).toByte, (i + 3).toShort, (i * 10), (i + 1).toString)
+    }
+
+    withParquetTable(fact, "fact", true, Seq.apply("_1", "_2", "_3")) {
+      withParquetTable(dim, "dim") {
+          val df = sql(
+            """
+              |SELECT f._1, f._2, f._3, f._4 FROM fact f
+              |JOIN dim d
+              |ON (f._2 = d._2)
+              |WHERE d._5 > 80
+            """.stripMargin)
+          val explainDF = df.queryExecution.explainString(ExplainMode
+            .fromString("extended"))
+          assert(explainDF.contains("dynamicpruningexpression"))
+          checkAnswer(df, Row(9, 10, 11, 12) :: Nil)
+
+          // reuse a single Byte key
+          val dfByte = sql(
+            """
+              |SELECT f._1, f._2, f._3, f._4 FROM fact f
+              |JOIN dim d
+              |ON (f._3 = d._3)
+              |WHERE d._5 > 80
+            """.stripMargin)
+          val explainDFByte = dfByte.queryExecution.explainString(ExplainMode
+            .fromString("extended"))
+          assert(explainDFByte.contains("dynamicpruningexpression"))
+          checkAnswer(dfByte, Row(9, 10, 11, 12) :: Nil)
+
+          // reuse a single String key
+          val dfStr = sql(
+            """
+              |SELECT f._1, f._2, f._3, f._4 FROM fact f
+              |JOIN dim d
+              |ON (f._3 = d._3)
+              |WHERE d._5 > 80
+            """.stripMargin)
+          val explainDFStr = dfStr.queryExecution.explainString(ExplainMode
+            .fromString("extended"))
+          assert(explainDFStr.contains("dynamicpruningexpression"))
+          checkAnswer(dfStr, Row(9, 10, 11, 12) :: Nil)
+
+          // mult results
+          val dfMultStr = sql(
+            """
+              |SELECT f._1, f._2, f._3, f._4 FROM fact f
+              |JOIN dim d
+              |ON (f._3 = d._3)
+              |WHERE d._5 > 70
+            """.stripMargin)
+           val explainDFMultStr = dfMultStr.queryExecution.explainString(ExplainMode
+             .fromString("extended"))
+          assert(explainDFMultStr.contains("dynamicpruningexpression"))
+          checkAnswer(dfMultStr, Seq(Row(8, 9, 10, 11), Row(9, 10, 11, 12)))
+        }
+      }
+    }
 }
 
 class ParquetV1QuerySuite extends ParquetQuerySuite {

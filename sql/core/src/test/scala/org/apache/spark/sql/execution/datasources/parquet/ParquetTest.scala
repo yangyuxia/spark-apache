@@ -82,8 +82,10 @@ private[sql] trait ParquetTest extends FileBasedDataSourceTest {
    * Parquet file will be dropped/deleted after `f` returns.
    */
   protected def withParquetTable[T <: Product: ClassTag: TypeTag]
-      (data: Seq[T], tableName: String, testVectorized: Boolean = true)
-      (f: => Unit): Unit = withDataSourceTable(data, tableName, testVectorized)(f)
+      (data: Seq[T], tableName: String, testVectorized: Boolean = true
+       , partitionNames: Seq[String] = Seq.empty)
+      (f: => Unit): Unit = withDataSourceTable(data, tableName, testVectorized
+        , partitionNames)(f)
 
   protected def makeParquetFile[T <: Product: ClassTag: TypeTag](
       data: Seq[T], path: File): Unit = makeDataSourceFile(data, path)
