@@ -332,7 +332,7 @@ abstract class OrcQueryTest extends OrcTest {
     }
   }
 
-  test("dpp") {
+  test("dynamic partition pruning") {
     // 4 rows, cells of column 1 of row 2 and row 4 are null
     val fact = (0 to 99).map { i =>
       (i, i + 1, (i + 2).toByte, (i + 3).toShort, (i * 20) % 100, (i + 1).toString)
@@ -352,7 +352,7 @@ abstract class OrcQueryTest extends OrcTest {
             |WHERE d._5 > 80
             """.stripMargin)
         val explainDF = df.queryExecution.explainString(ExplainMode
-          .fromString("formatted"))
+          .fromString("extended"))
         assert(explainDF.contains("dynamicpruningexpression"))
         checkAnswer(df, Row(9, 10, 11, 12) :: Nil)
 

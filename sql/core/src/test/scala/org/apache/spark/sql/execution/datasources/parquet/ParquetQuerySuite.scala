@@ -1015,7 +1015,7 @@ abstract class ParquetQuerySuite extends QueryTest with ParquetTest with SharedS
     }
   }
 
-  test("dpp") {
+  test("dynamic partition pruning") {
     // 4 rows, cells of column 1 of row 2 and row 4 are null
     val fact = (0 to 99).map { i =>
       (i, i + 1, (i + 2).toByte, (i + 3).toShort, (i * 20) % 100, (i + 1).toString)

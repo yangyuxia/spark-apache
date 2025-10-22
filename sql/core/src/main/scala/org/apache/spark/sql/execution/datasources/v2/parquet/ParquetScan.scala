@@ -48,7 +48,7 @@ case class ParquetScan(
     pushedAggregate: Option[Aggregation] = None,
     originPartitionFilters: Seq[Expression] = Seq.empty,
     dataFilters: Seq[Expression] = Seq.empty) extends FileScan with SupportsRuntimeFiltering {
-  private var dppPartitionFilters: Seq[Expression] = Seq.empty;
+  private var dppPartitionFilters: Seq[Expression] = Seq.empty
 
   override def partitionFilters: Seq[Expression] = {
     originPartitionFilters ++ dppPartitionFilters
@@ -155,7 +155,8 @@ case class ParquetScan(
     filters.foreach {
       case In(attrName, values) if readPartitionSchema.fieldNames.contains(attrName) =>
         val dataType = readPartitionSchema.fields(readPartitionSchema.fieldIndex(attrName)).dataType
-        dppPartitionFilters = dppPartitionFilters :+ InSet(AttributeReference(attrName, dataType)(), values.toSet)
+        dppPartitionFilters = dppPartitionFilters :+
+          InSet(AttributeReference(attrName, dataType)(), values.toSet)
       case _ => // skip
     }
   }

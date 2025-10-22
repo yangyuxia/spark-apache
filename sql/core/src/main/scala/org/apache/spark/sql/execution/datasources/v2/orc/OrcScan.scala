@@ -43,7 +43,7 @@ case class OrcScan(
     pushedFilters: Array[Filter],
     originPartitionFilters: Seq[Expression] = Seq.empty,
     dataFilters: Seq[Expression] = Seq.empty) extends FileScan with SupportsRuntimeFiltering {
-  private var dppPartitionFilters: Seq[Expression] = Seq.empty;
+  private var dppPartitionFilters: Seq[Expression] = Seq.empty
 
   override def partitionFilters: Seq[Expression] = {
     originPartitionFilters ++ dppPartitionFilters
